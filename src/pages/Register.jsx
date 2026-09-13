@@ -1,26 +1,30 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 
-const initialFormData = {
-  fullName: "",
-  email: "",
-  role: "",
-  password: "",
-  confirmPassword: "",
-  termsAccepted: false,
-};
+import { useAuth } from "../context/AuthContext";
 
 function Register() {
   const navigate = useNavigate();
+
   const { register } = useAuth();
 
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    role: "farmer",
+    termsAccepted: false,
+  });
+
   const [errors, setErrors] = useState({});
+
   const [serverError, setServerError] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
+
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   function handleChange(event) {
@@ -39,31 +43,89 @@ function Register() {
     setServerError("");
   }
 
-  function getPasswordRequirements(password) {
+  function getPasswordStrength(password) {
+    if (!password) {
+      return {
+        label: "",
+        width: 0,
+      };
+    }
+
+    let score = 0;
+
+    if (password.length >= 6) {
+      score += 1;
+    }
+
+    if (password.length >= 8) {
+      score += 1;
+    }
+
+    if (/[A-Z]/.test(password)) {
+      score += 1;
+    }
+
+    if (/[a-z]/.test(password)) {
+      score += 1;
+    }
+
+    if (/[0-9]/.test(password)) {
+      score += 1;
+    }
+
+    if (/[^A-Za-z0-9]/.test(password)) {
+      score += 1;
+    }
+
+    if (score <= 2) {
+      return {
+        label: "Weak",
+        width: 30,
+      };
+    }
+
+    if (score <= 4) {
+      return {
+        label: "Medium",
+        width: 65,
+      };
+    }
+
     return {
-      minLength: password.length >= 8,
-      uppercase: /[A-Z]/.test(password),
-      lowercase: /[a-z]/.test(password),
-      number: /\d/.test(password),
-      special: /[^A-Za-z0-9]/.test(password),
+      label: "Strong",
+      width: 100,
     };
   }
+
+  const passwordStrength = getPasswordStrength(formData.password);
+
+  const passwordRequirements = {
+    minLength: formData.password.length >= 6,
+
+    uppercase: /[A-Z]/.test(formData.password),
+
+    lowercase: /[a-z]/.test(formData.password),
+
+    number: /[0-9]/.test(formData.password),
+
+    special: /[^A-Za-z0-9]/.test(formData.password),
+  };
 
   function validateForm() {
     const newErrors = {};
 
     const fullName = formData.fullName.trim();
+
     const email = formData.email.trim();
+
     const password = formData.password;
+
     const confirmPassword = formData.confirmPassword;
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const passwordRequirements = getPasswordRequirements(password);
 
     if (!fullName) {
       newErrors.fullName = "Full name is required.";
-    } else if (fullName.length < 2) {
-      newErrors.fullName = "Full name must contain at least 2 characters.";
     }
 
     if (!email) {
@@ -72,24 +134,10 @@ function Register() {
       newErrors.email = "Please enter a valid email address.";
     }
 
-    const allowedRoles = ["farmer", "agricultural-expert"];
-
-    if (!formData.role) {
-      newErrors.role = "Please select your user type.";
-    } else if (!allowedRoles.includes(formData.role)) {
-      newErrors.role = "Please select a valid user type.";
-    }
-
     if (!password) {
       newErrors.password = "Password is required.";
-    } else {
-      const allRequirementsMet =
-        Object.values(passwordRequirements).every(Boolean);
-
-      if (!allRequirementsMet) {
-        newErrors.password =
-          "Password does not meet all security requirements.";
-      }
+    } else if (password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters.";
     }
 
     if (!confirmPassword) {
@@ -98,8 +146,12 @@ function Register() {
       newErrors.confirmPassword = "Passwords do not match.";
     }
 
+    if (!formData.role) {
+      newErrors.role = "Please select a role.";
+    }
+
     if (!formData.termsAccepted) {
-      newErrors.termsAccepted = "You must accept the terms and conditions.";
+      newErrors.termsAccepted = "You must accept the Terms & Conditions.";
     }
 
     return newErrors;
@@ -127,18 +179,26 @@ function Register() {
         formData.role,
       );
 
-      navigate("/dashboard");
+      navigate("/verify-email", {
+        replace: true,
+      });
     } catch (error) {
-      let message = "Registration failed. Please try again.";
+      console.error("Registration failed:", error);
+
+      let message = "Unable to create your account. Please try again.";
 
       if (error.code === "auth/email-already-in-use") {
         message = "An account with this email already exists.";
       } else if (error.code === "auth/invalid-email") {
         message = "Please enter a valid email address.";
       } else if (error.code === "auth/weak-password") {
-        message = "The password is too weak.";
+        message = "Password is too weak. Please use a stronger password.";
       } else if (error.code === "auth/network-request-failed") {
-        message = "Network error. Please check your connection.";
+        message = "Network error. Please check your internet connection.";
+      } else if (error.code === "auth/too-many-requests") {
+        message = "Too many requests. Please try again later.";
+      } else {
+        message = error.message || message;
       }
 
       setServerError(message);
@@ -147,20 +207,22 @@ function Register() {
     }
   }
 
-  const passwordRequirements = getPasswordRequirements(formData.password);
-
   return (
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="app-logo">CR</div>
+          <img
+            src="/logo.png"
+            alt="Crop Recommendation and Disease Detection"
+            className="app-logo"
+          />
 
           <h1>Create Account</h1>
 
           <p>Crop Recommendation & Disease Detection</p>
 
           <span className="auth-subtitle">
-            Register to use the agriculture assistant
+            Create your account to get started
           </span>
         </div>
 
@@ -202,23 +264,6 @@ function Register() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="role">User Type</label>
-
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-            >
-              <option value="">Select user type</option>
-              <option value="farmer">Farmer</option>
-              <option value="agricultural-expert">Agricultural Expert</option>
-            </select>
-
-            {errors.role && <p className="field-error">{errors.role}</p>}
-          </div>
-
-          <div className="form-group">
             <label htmlFor="password">Password</label>
 
             <div className="password-input-wrapper">
@@ -226,7 +271,7 @@ function Register() {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Create a strong password"
+                placeholder="Create a password"
                 value={formData.password}
                 onChange={handleChange}
                 autoComplete="new-password"
@@ -244,52 +289,41 @@ function Register() {
             {formData.password && (
               <div className="password-strength">
                 <div className="password-strength-header">
-                  <span>Password strength</span>
-                  <span>
-                    {Object.values(passwordRequirements).filter(Boolean).length}{" "}
-                    / 5
-                  </span>
+                  <span>Password Strength</span>
+
+                  <span>{passwordStrength.label}</span>
                 </div>
 
                 <div className="password-strength-bar">
                   <div
-                    className={`password-strength-fill strength-${
-                      Object.values(passwordRequirements).filter(Boolean).length
-                    }`}
+                    className="password-strength-fill"
                     style={{
-                      width: `${
-                        (Object.values(passwordRequirements).filter(Boolean)
-                          .length /
-                          5) *
-                        100
-                      }%`,
+                      width: `${passwordStrength.width}%`,
                     }}
                   />
                 </div>
-              </div>
-            )}
 
-            {formData.password && (
-              <div className="password-requirements">
-                <p className={passwordRequirements.minLength ? "valid" : ""}>
-                  At least 8 characters
-                </p>
+                <div className="password-requirements">
+                  <p className={passwordRequirements.minLength ? "valid" : ""}>
+                    At least 6 characters
+                  </p>
 
-                <p className={passwordRequirements.uppercase ? "valid" : ""}>
-                  At least one uppercase letter
-                </p>
+                  <p className={passwordRequirements.uppercase ? "valid" : ""}>
+                    One uppercase letter
+                  </p>
 
-                <p className={passwordRequirements.lowercase ? "valid" : ""}>
-                  At least one lowercase letter
-                </p>
+                  <p className={passwordRequirements.lowercase ? "valid" : ""}>
+                    One lowercase letter
+                  </p>
 
-                <p className={passwordRequirements.number ? "valid" : ""}>
-                  At least one number
-                </p>
+                  <p className={passwordRequirements.number ? "valid" : ""}>
+                    One number
+                  </p>
 
-                <p className={passwordRequirements.special ? "valid" : ""}>
-                  At least one special character
-                </p>
+                  <p className={passwordRequirements.special ? "valid" : ""}>
+                    One special character
+                  </p>
+                </div>
               </div>
             )}
 
@@ -300,6 +334,7 @@ function Register() {
 
           <div className="form-group">
             <label htmlFor="confirmPassword">Confirm Password</label>
+
             <div className="password-input-wrapper">
               <input
                 id="confirmPassword"
@@ -320,13 +355,42 @@ function Register() {
               </button>
             </div>
 
+            {formData.confirmPassword &&
+              formData.password === formData.confirmPassword && (
+                <p className="password-match">✓ Passwords match</p>
+              )}
+
             {errors.confirmPassword && (
               <p className="field-error">{errors.confirmPassword}</p>
             )}
           </div>
 
+          <div className="form-group">
+            <label htmlFor="role">Account Type</label>
+
+            <select
+              id="role"
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+            >
+              <option value="farmer">Farmer</option>
+
+              <option value="agricultural-expert">Agricultural Expert</option>
+            </select>
+
+            {errors.role && <p className="field-error">{errors.role}</p>}
+
+            {formData.role === "agricultural-expert" && (
+              <p className="role-note">
+                Agricultural Expert accounts require verification and admin
+                approval before expert features can be used.
+              </p>
+            )}
+          </div>
+
           <div className="terms-group">
-            <label>
+            <label className="terms-checkbox">
               <input
                 type="checkbox"
                 name="termsAccepted"
@@ -334,7 +398,7 @@ function Register() {
                 onChange={handleChange}
               />
 
-              <span>I agree to the terms and conditions.</span>
+              <span>I accept the Terms & Conditions.</span>
             </label>
 
             {errors.termsAccepted && (
@@ -343,7 +407,7 @@ function Register() {
           </div>
 
           <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creating account..." : "Create Account"}
+            {isSubmitting ? "Creating Account..." : "Create Account"}
           </button>
         </form>
 
